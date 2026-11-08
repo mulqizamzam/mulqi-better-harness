@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # The suite imports Node builtins only; no install step is needed.
+      - name: Syntax check (bundle entry + policy modules)
+        run: |
+          node --check index.js
+          node --check lib/provider.js
+          node --check lib/policy.js
+      - name: Run test suite
+        run: node --test tests/*.test.js
