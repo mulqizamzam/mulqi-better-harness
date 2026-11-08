@@ -41,7 +41,6 @@ test.if(HAS_MANIFEST, 'the audit hash manifest exists', () => {
 
 test.if(HAS_MANIFEST, 'every vendored file matches the audit manifest, with no extras', () => {
   const lines = readFileSync(MANIFEST, 'utf8').trim().split('\n')
-  const lines = readFileSync(MANIFEST, 'utf8').trim().split('\n')
   const expected = new Map()
   for (const line of lines) {
     const match = /^([0-9a-f]{64})\s\s(\S+)$/.exec(line)
