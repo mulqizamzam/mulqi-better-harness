@@ -1,0 +1,6 @@
+# private audit + source-clone workspaces (gate artifacts, not published)
+/audit/
+/work/
+# local install artifacts
+/node_modules/
+*.log

@@ -1,0 +1,15 @@
+# Mulqi Better Harness — DSH bundle patch layer.
+#
+# Mounts the bundled better-harness skill (custom rank, global skills layer)
+# plus the explicit-only policy into every profile that lists this package
+# in dsh.profile.bundles. The row's `name` is this package; the host loader
+# resolves it from the profile's node_modules.
+#
+# Optional row config: add `config: { mulqiBetterHarnessRoot: /absolute/path }`
+# to bind discovery and verification to a different complete Better Harness
+# root (for example a patched out-of-tree copy). It must be absolute; a
+# literal `~` and relative paths are rejected by the policy's own validation.
+
+- insert:
+    - id: mulqi-bh
+      name: mulqi-better-harness
