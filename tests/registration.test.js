@@ -7,7 +7,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { test } from 'node:test'
 
@@ -45,8 +45,10 @@ function mockContext() {
 test('the bundle declares the expected entry identity and injected services', () => {
   assert.equal(name, 'mulqi-better-harness')
   assert.deepEqual(inject, ['skills', 'tools'])
+  // The packaged root must resolve inside this package, wherever it is cloned.
+  assert.ok(PACKAGED_ROOT.endsWith('mulqi-better-harness') || existsSync(`${PACKAGED_ROOT}/index.js`),
+    'PACKAGED_ROOT must resolve to the package directory')
   assert.equal(typeof PACKAGED_ROOT, 'string')
-  assert.ok(PACKAGED_ROOT.endsWith('mulqi-better-harness'))
 })
 
 test('apply registers exactly one provider, one guard, and one pre-step gate', () => {

@@ -19,9 +19,7 @@ const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const MANIFEST = path.join(PLUGIN_ROOT, 'audit', 'vendor-inventory.sha256')
 const HAS_MANIFEST = existsSync(MANIFEST)
 
-if (!HAS_MANIFEST) {
-  test('vendor integrity is a private gate test (audit manifest not shipped); run inside the working folder to enable it', { skip: true }, () => {})
-}
+const SKIP_REASON = 'private audit manifest not shipped with the public package; run inside the working folder'
 
 const VENDOR_ROOTS = ['skills', 'scripts', 'references', 'models', 'templates']
 
@@ -35,11 +33,11 @@ function walk(dir) {
   return out
 }
 
-test.if(HAS_MANIFEST, 'the audit hash manifest exists', () => {
+test('the audit hash manifest exists', { skip: HAS_MANIFEST ? undefined : SKIP_REASON }, () => {
   assert.ok(existsSync(MANIFEST), `missing ${MANIFEST}; regenerate it in the private audit workspace before shipping`)
 })
 
-test.if(HAS_MANIFEST, 'every vendored file matches the audit manifest, with no extras', () => {
+test('every vendored file matches the audit manifest, with no extras', { skip: HAS_MANIFEST ? undefined : SKIP_REASON }, () => {
   const lines = readFileSync(MANIFEST, 'utf8').trim().split('\n')
   const expected = new Map()
   for (const line of lines) {
