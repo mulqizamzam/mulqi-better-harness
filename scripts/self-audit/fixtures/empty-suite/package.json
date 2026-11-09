@@ -1,0 +1,8 @@
+{
+  "name": "fixture-empty-suite",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js | tee /tmp/test.out; pass=$(grep -c '^# pass' /tmp/test.out || echo 0); [ \"$pass\" -gt 0 ] || { echo 'FATAL: 0 tests ran'; exit 1; }"
+  }
+}
