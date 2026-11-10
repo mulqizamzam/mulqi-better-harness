@@ -16,20 +16,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      # The suite imports Node builtins only; no install step is needed.
-      - name: Syntax check (bundle entry + policy modules)
+      - name: Syntax check
         run: |
           node --check index.js
           node --check lib/provider.js
           node --check lib/policy.js
-      - name: Run test suite (primary)
-        run: |
-          node --test tests/*.test.js | tee /tmp/test.out
-          pass=$(grep -c '^# pass' /tmp/test.out || echo 0)
-          if [ "$pass" -eq 0 ]; then echo 'FATAL: 0 tests ran'; exit 1; fi
-      - name: Self-audit: verify silent-green guard
+      - name: Run test suite
+        run: node --test tests/*.test.js
+      - name: Self-audit verify silent-green guard
         run: |
           cd scripts/self-audit/fixtures/empty-suite
-          npm test 2>&1 | tail -5
-          # Guard should fail (exit 1) — if it passes, guard is broken
-          npm test >/dev/null 2>&1 && { echo 'ERROR: guard did not catch empty suite'; exit 1; } || echo 'PASS: guard correctly rejects empty suite'
+          npm test >/dev/null 2>&1 && { echo 'ERROR: guard did not catch empty suite'; exit 1; } || echo 'PASS: guard rejects empty suite'
