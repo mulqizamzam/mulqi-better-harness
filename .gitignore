@@ -1,5 +1,9 @@
 # private audit + source-clone workspaces (gate artifacts, not published)
-/audit/
+# Note: /audit/* (not /audit/) so the gate manifest below can be re-included;
+# the committed manifest is a hash inventory of the PUBLIC vendor trees and
+# is what CI materialises — everything else under audit/ stays private.
+/audit/*
+!audit/vendor-inventory.sha256
 /work/
 # local install artifacts
 /node_modules/
