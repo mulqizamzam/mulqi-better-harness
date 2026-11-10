@@ -24,6 +24,4 @@ jobs:
       - name: Run test suite
         run: node --test tests/*.test.js
       - name: Self-audit verify silent-green guard
-        run: |
-          cd scripts/self-audit/fixtures/empty-suite
-          npm test >/dev/null 2>&1 && { echo 'ERROR: guard did not catch empty suite'; exit 1; } || echo 'PASS: guard rejects empty suite'
+        run: node scripts/self-audit/guard-verification.mjs
