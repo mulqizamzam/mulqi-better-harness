@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import { privacySafeUserInputEvidence } from "./privacy-safe-text.mjs";
 
-export const SESSION_CORE_FACTS_SCHEMA_VERSION = 4;
-export const EPISODE_FACTS_SCHEMA_VERSION = 3;
+export const SESSION_CORE_FACTS_SCHEMA_VERSION = 5;
+export const EPISODE_FACTS_SCHEMA_VERSION = 4;
 export const DEFAULT_EPISODE_FACT_LIMIT = 5;
 export const MAX_EPISODE_FACT_LIMIT = 5;
 export const MAX_REQUEST_SUMMARY_CHARS = 240;
@@ -324,9 +324,7 @@ function buildCandidate(record) {
   }));
   const allChecks = checkRecords.map((record) => record.value);
   const checks = boundedChecks(checkRecords, episode.repair);
-  const reviewAfterEdits = allChecks.filter(
-    (check) => check?.relation === "reviewed-relevant-after-change",
-  ).length;
+  const reviewAfterEdits = allChecks.filter((check) => check?.reviewed === true).length;
   const unverifiable = editCount > 0 && reviewAfterEdits === 0;
   const failedChecks = (episode.validationSets ?? []).filter((validation) => validation?.status === "failed").length;
   const failureEvents = events.filter(isFailureEvent).length;
@@ -505,6 +503,7 @@ function compactCheck(validation, resultFacts, relation) {
       ? validation.status
       : "observed",
     relation,
+    ...(isReviewedRelevantCheck(validation, relation) ? { reviewed: true } : {}),
     ...(counts && Object.keys(counts).length > 0
       ? { counts, countQuality: "parsed" }
       : validation?.status === "failed"
@@ -549,9 +548,20 @@ function validationOccursAfterFinalChange(validation, finalChange) {
 function validationRelation(validation, finalChange) {
   if (!finalChange) return "no-change-context";
   if (!validationOccursAfterFinalChange(validation, finalChange)) return "not-after-final-change";
-  return validation?.reviewedAssociation === true || validation?.relevance === "relevant"
-    ? "reviewed-relevant-after-change"
-    : "after-final-change-unreviewed";
+  // Canonical post-edit verification position: the check ran after the final
+  // change of the episode. Whether it was a reviewed, relevant check is
+  // carried by the companion reviewed flag, not by the relation vocabulary.
+  return "after-final-change";
+}
+
+// A check occupies the canonical post-edit verification slot (relation
+// after-final-change) and is a reviewed, relevant check when the provider
+// associated it with the changed work (reviewedAssociation or relevance).
+// Works on raw validation sets and on compact emitted checks alike.
+function isReviewedRelevantCheck(validation, relation) {
+  if (relation !== "after-final-change") return false;
+  if (validation?.reviewed === true) return true;
+  return validation?.reviewedAssociation === true || validation?.relevance === "relevant";
 }
 
 function boundedChecks(checkRecords = [], repair = {}) {
@@ -638,7 +648,7 @@ function observedAcceptanceSignals({ editCount, checks = [], result = {}, repair
   const signals = [];
   if (editCount > 0) signals.push("project-change");
   if (checks.length > 0) signals.push("check-observed");
-  if (checks.some((check) => check?.relation === "reviewed-relevant-after-change")) {
+  if (checks.some((check) => check?.reviewed === true)) {
     signals.push("reviewed-relevant-check");
   }
   if (result.assistantHandoffObserved === true) signals.push("assistant-handoff");
@@ -713,7 +723,7 @@ function candidateEvidenceClasses({
 function isOutcomeLead({ editCount, checks, closure, repair }) {
   if (["relevant-check-passed", "relevant-check-not-passed"].includes(closure)) return true;
   if (repair === "failure-edit-rerun-candidate") return true;
-  if (checks.some((check) => check.relation === "after-final-change-unreviewed")) return true;
+  if (checks.some((check) => check.relation === "after-final-change" && check.reviewed !== true)) return true;
   return editCount === 0 && checks.length > 0;
 }
 
@@ -854,7 +864,7 @@ function candidatePriority({
       ? 4
       : repair === "failure-edit-rerun-candidate"
         ? 3
-        : checks.some((check) => check.relation === "after-final-change-unreviewed")
+        : checks.some((check) => check.relation === "after-final-change" && check.reviewed !== true)
           ? 2
           : checks.length > 0
             ? 1
@@ -971,7 +981,7 @@ function observedMechanisms(events, episode) {
 
 function closureLabel(_closure = {}, { editCount = 0, checkCount = 0, checks = [] } = {}) {
   if (editCount === 0) return "no-change-observed";
-  const relevant = checks.filter((check) => check.relation === "reviewed-relevant-after-change");
+  const relevant = checks.filter((check) => check.reviewed === true);
   if (relevant.some((check) => check.status === "passed")) return "relevant-check-passed";
   if (relevant.length > 0) return "relevant-check-not-passed";
   if (checkCount > 0) return "check-observed-relevance-unresolved";
