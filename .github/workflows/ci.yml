@@ -23,7 +23,7 @@ jobs:
         run: node scripts/self-audit/materialize-manifest.mjs
       - name: Run test suite
         run: node --test tests/*.test.js
-      - name: Guard: vendor-integrity suite actually executed
+      - name: "Guard: vendor-integrity suite actually executed"
         run: node scripts/self-audit/integrity-execution-guard.mjs
       - name: Self-audit verify silent-green guard
         run: node scripts/self-audit/guard-verification.mjs
