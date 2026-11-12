@@ -32,6 +32,19 @@ const SESSION_CORE_SEMANTIC_GUARDRAILS = Object.freeze([
   "project-capability-inventory-unobserved",
 ]);
 
+// Observed consequence symptom -> machine-observed friction kind. Kinds reuse
+// the observed-friction vocabulary already validated against episode facts
+// ("explicit-user-correction", "same-check-repair", "validation-failure")
+// plus the execution-friction block kinds ("execution-failure",
+// "permission-denial").
+const FRICTION_CONSEQUENCE_KINDS = Object.freeze({
+  "failed-check": "validation-failure",
+  "execution-failure": "execution-failure",
+  "permission-denial": "permission-denial",
+  "user-correction": "explicit-user-correction",
+  "repair-lead": "same-check-repair",
+});
+
 export function buildEpisodeFactsPack(records = [], options = {}) {
   const limit = boundedLimit(options.limit);
   const candidates = [];
@@ -365,6 +378,7 @@ function buildCandidate(record) {
   });
   const frictionConsequenceSignals = observedFrictionConsequenceSignals({
     checks: allChecks,
+    otherFailures,
     permissionDenials,
     result,
     repair,
@@ -668,12 +682,14 @@ function acceptanceEvidenceCeiling(signals = []) {
 
 function observedFrictionConsequenceSignals({
   checks = [],
+  otherFailures = 0,
   permissionDenials = 0,
   result = {},
   repair = null,
 } = {}) {
   const signals = [];
   if (checks.some((check) => check?.status === "failed")) signals.push("failed-check");
+  if (nonNegativeInteger(otherFailures) > 0) signals.push("execution-failure");
   if (nonNegativeInteger(permissionDenials) > 0) signals.push("permission-denial");
   if (result.userCorrectionObserved === true) signals.push("user-correction");
   if (repair === "failure-edit-rerun-candidate") signals.push("repair-lead");
@@ -770,12 +786,18 @@ function candidateAdmissionSupport(candidates = []) {
       refsBySignal.set(signal, refs);
     }
   }
-  const sharedFrictionConsequences = [...refsBySignal.entries()]
-    .filter(([, episodeRefs]) => episodeRefs.length >= 2)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([signal, episodeRefs]) => ({ signal, episodeRefs }));
+  const orderedSignals = [...refsBySignal.keys()].sort((left, right) => left.localeCompare(right));
+  const frictionConsequences = orderedSignals.map((symptom) => ({
+    kind: FRICTION_CONSEQUENCE_KINDS[symptom] ?? "unobserved",
+    symptom,
+    episodeRefs: refsBySignal.get(symptom),
+  }));
+  const sharedFrictionConsequences = orderedSignals
+    .filter((symptom) => refsBySignal.get(symptom).length >= 2)
+    .map((symptom) => ({ signal: symptom, episodeRefs: refsBySignal.get(symptom) }));
   return {
     semanticGuardrails: [...SESSION_CORE_SEMANTIC_GUARDRAILS],
+    frictionConsequences,
     sharedFrictionConsequences,
   };
 }

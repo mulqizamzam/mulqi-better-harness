@@ -254,6 +254,7 @@ function buildEpisodeSummary(episodes) {
 
 function buildFrictionSignals(events, warnings) {
   const frictionEvents = [];
+  const consequenceCounts = new Map();
   for (const event of events) {
     const type = event.type ?? "";
     const summary = event.summary ?? "";
@@ -268,16 +269,24 @@ function buildFrictionSignals(events, warnings) {
     if (!explicitFailure && !matched) {
       continue;
     }
+    const name = matched?.name ?? "failed-event";
     frictionEvents.push({
-      name: matched?.name ?? "failed-event",
+      name,
       evidenceRef: event.evidenceRef,
     });
+    if (explicitFailure) {
+      consequenceCounts.set(name, (consequenceCounts.get(name) ?? 0) + 1);
+    }
   }
 
-  const counted = countByName(frictionEvents);
+  const counted = countByName(frictionEvents).map((row) => ({
+    ...row,
+    consequences: consequenceCounts.get(row.name) ?? 0,
+  }));
   const sourceWarnings = warnings.map((warning) => ({
     name: `source-warning:${warning.code}`,
     count: 1,
+    consequences: 0,
     evidenceRefs: [],
   }));
   return [...counted, ...sourceWarnings].slice(0, DEFAULT_TOP_LIMIT);
@@ -477,10 +486,13 @@ function validationAfterEditEvidenceRefs(signal) {
 
 function frictionCard({ scope, sample, friction }) {
   const top = friction.find((item) => !item.name.startsWith("source-warning:"));
+  const consequences = Number(top?.consequences ?? 0);
   return {
     id: "execution-friction",
     title: "Execution friction",
-    finding: top ? `Observed friction category: ${top.name} (${top.count}).` : "No strong execution friction signal in the analyzed sample.",
+    finding: top
+      ? `Observed friction category: ${top.name} (${top.count}), ${consequences} observed consequence(s).`
+      : "No strong execution friction signal in the analyzed sample.",
     behaviorChange: top
       ? "Open bounded sessions behind this category before turning it into a user-facing recommendation."
       : "Keep friction claims narrow unless additional failed commands, rejected actions, or warnings are inspected.",
