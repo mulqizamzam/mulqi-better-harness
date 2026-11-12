@@ -59,6 +59,20 @@ What this repo pins, and what to touch when the host side moves.
   fails on a missing manifest anywhere except a recognised public clone,
   and `integrity-execution-guard.mjs` re-runs it after the suite.
 
+## New checkout
+
+The pre-commit hook lives in `.git/hooks/` (per-checkout, untracked); the
+tracked helper is `scripts/self-audit/pre-commit.mjs`. Install the hook in
+a fresh checkout with:
+
+```sh
+printf '#!/bin/sh\nexec node "$(git rev-parse --show-toplevel)/scripts/self-audit/pre-commit.mjs"\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+Without the hook the manifest-lockstep rule still holds — it is just
+enforced by the suite + CI instead of at commit time.
+
 ## Adding a platform
 
 1. Register it in `PLATFORM_MODULES` in `scripts/session-analysis/analyzer.mjs`
