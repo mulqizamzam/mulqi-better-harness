@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import { privacySafeUserInputEvidence } from "./privacy-safe-text.mjs";
 
-export const SESSION_CORE_FACTS_SCHEMA_VERSION = 3;
-export const EPISODE_FACTS_SCHEMA_VERSION = 2;
+export const SESSION_CORE_FACTS_SCHEMA_VERSION = 4;
+export const EPISODE_FACTS_SCHEMA_VERSION = 3;
 export const DEFAULT_EPISODE_FACT_LIMIT = 5;
 export const MAX_EPISODE_FACT_LIMIT = 5;
 export const MAX_REQUEST_SUMMARY_CHARS = 240;
@@ -145,6 +145,8 @@ export function finalizeSessionCoreFacts({
       candidateEpisodes: nonNegativeInteger(episodeFacts?.candidateCount),
       distinctRequests: nonNegativeInteger(episodeFacts?.distinctRequestCount),
       emittedCandidates: entries.length,
+      withReviewAfterEdits: admissionReviewAfterEdits(entries),
+      unverifiableCandidates: admissionUnverifiableCandidates(entries),
     },
     populationCoverage: safeObservationCoverage(episodeFacts?.populationCoverage),
     observationCoverage: candidateObservationCoverage(entries),
@@ -198,6 +200,8 @@ export function finalizeSessionCoreFacts({
     envelope.observationCoverage = candidateObservationCoverage(envelope.candidates);
     envelope.admissionSupport = candidateAdmissionSupport(envelope.candidates);
     envelope.admission.emittedCandidates = envelope.candidates.length;
+    envelope.admission.withReviewAfterEdits = admissionReviewAfterEdits(envelope.candidates);
+    envelope.admission.unverifiableCandidates = admissionUnverifiableCandidates(envelope.candidates);
     if (envelope.debug) {
       const emittedRefs = new Set(envelope.candidates.map((candidate) => candidate.ref));
       envelope.debug.locators = envelope.debug.locators.filter((locator) => emittedRefs.has(locator.ref));
@@ -274,8 +278,19 @@ function diagnosticFlags(envelope) {
   if (envelope.populationCoverage.withReviewedRelevantCheck === 0) {
     flags.push("no-reviewed-relevant-check-evidence");
   }
+  if (envelope.observationCoverage.unverifiableCandidates > 0) {
+    flags.push("post-edit-validation-blind");
+  }
   if (envelope.populationCoverage.withResultSignal === 0) flags.push("no-result-evidence");
   return flags;
+}
+
+function admissionReviewAfterEdits(candidates = []) {
+  return candidates.filter((candidate) => nonNegativeInteger(candidate?.reviewAfterEdits) > 0).length;
+}
+
+function admissionUnverifiableCandidates(candidates = []) {
+  return candidates.filter((candidate) => candidate?.unverifiable === true).length;
 }
 
 function buildCandidate(record) {
@@ -309,6 +324,10 @@ function buildCandidate(record) {
   }));
   const allChecks = checkRecords.map((record) => record.value);
   const checks = boundedChecks(checkRecords, episode.repair);
+  const reviewAfterEdits = allChecks.filter(
+    (check) => check?.relation === "reviewed-relevant-after-change",
+  ).length;
+  const unverifiable = editCount > 0 && reviewAfterEdits === 0;
   const failedChecks = (episode.validationSets ?? []).filter((validation) => validation?.status === "failed").length;
   const failureEvents = events.filter(isFailureEvent).length;
   const otherFailures = Math.max(0, failureEvents - failedChecks);
@@ -379,6 +398,8 @@ function buildCandidate(record) {
       edits: editCount,
       files: fileCount,
     },
+    reviewAfterEdits,
+    ...(unverifiable ? { unverifiable: true } : {}),
     evidenceClasses,
     acceptanceSignals,
     acceptanceEvidenceCeiling: acceptanceEvidenceCeiling(acceptanceSignals),
@@ -716,6 +737,8 @@ function candidateObservationCoverage(candidates = []) {
     withChecks: count((candidate) => hasAcceptanceSignal(candidate, "check-observed")),
     withReviewedRelevantCheck: count((candidate) =>
       hasAcceptanceSignal(candidate, "reviewed-relevant-check")),
+    withReviewAfterEdits: count((candidate) => nonNegativeInteger(candidate?.reviewAfterEdits) > 0),
+    unverifiableCandidates: count((candidate) => candidate?.unverifiable === true),
     withResultSignal: count(hasResultSignal),
     withAssistantHandoff: count((candidate) => candidate?.result?.assistantHandoffObserved === true),
     withStructuredCompletion: count((candidate) => candidate?.result?.structuredCompletionObserved === true),

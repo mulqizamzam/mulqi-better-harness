@@ -2343,23 +2343,111 @@ function selectedPaths(parsed) {
   return selected;
 }
 
-function toolArgumentFacts(toolName, argumentsText, options) {
+function toolArgumentFacts(toolName, argumentsText, options, eventCwd = null) {
   const parsed = parsedToolArguments(argumentsText);
   if (!parsed) return {};
   const facts = {};
   if (/(?:read|edit|write|file|notebook|view|patch|create)/iu.test(toolName)) {
-    const filePath = selectedPath(parsed.file_path ?? parsed.filePath ?? parsed.path);
+    const filePath = locationProjection(parsed.file_path ?? parsed.filePath ?? parsed.path, eventCwd);
     if (filePath) facts.filePath = filePath;
     const targetPaths = selectedPaths(parsed);
     if (targetPaths.length > 0) facts.targetPaths = targetPaths;
   }
   if (includeGate(options, "includeCommandText", "include-command-text")
-    && /(?:bash|shell|exec|terminal|run|powershell|command)/iu.test(toolName)) {
+    && /(?:bash|shell|exec|terminal|run|powershell|pwsh|command)/iu.test(toolName)) {
     const command = parsed.command ?? parsed.cmd;
     const commandText = typeof command === "string" ? boundedPrivateText(command, 4_096) : null;
-    if (commandText) facts.commandText = commandText;
+    if (commandText) {
+      facts.commandText = commandText;
+      // Post-edit validation blind spot: a shell call whose command text
+      // demonstrably writes files is change evidence even when the host
+      // never emitted a dedicated edit event.
+      const writeEvidence = bashWriteEvidence(commandText, parsed, eventCwd);
+      if (writeEvidence) {
+        facts.operation = "edit";
+        if (writeEvidence.affectedPaths.length > 0) facts.affectedPaths = writeEvidence.affectedPaths;
+      }
+    }
+  }
+  if (/(?:bash|shell|exec|terminal|run|powershell|pwsh|command)/iu.test(toolName)) {
+    const workdir = locationProjection(parsed.workdir, eventCwd);
+    if (workdir) {
+      facts.targetPaths = [...new Set([...(facts.targetPaths ?? []), workdir])].slice(0, 8);
+    }
+    // Platform-specific un-blinding: shell invocations that run inside the
+    // session workspace exercise that workspace's own state. When one is also
+    // a validation (test/lint/typecheck) the episode contract pairs it with a
+    // changed location and treats it as a reviewed, relevant post-change
+    // check. Runs aimed at other locations stay unobserved.
+    const rootLabel = eventCwd ? locationProjection(eventCwd, eventCwd) : null;
+    const executionLabel = workdir ?? rootLabel;
+    if (rootLabel && executionLabel
+      && (executionLabel === rootLabel || executionLabel.startsWith(`${rootLabel}/`))) {
+      facts.relevance = "relevant";
+    }
   }
   return facts;
+}
+
+// Conservative, anchored write evidence for shell command text. A match means
+// the command demonstrably mutates the filesystem; the affected location is the
+// extracted operand when it is a path, otherwise the execution location.
+const BASH_WRITE_PATTERNS = Object.freeze([
+  { pattern: /\bmkdir\s+(?:-[^\s]+\s+)*([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /\btee\s+(?:-a\s+)?([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /\bcat\s+(?:[^\s|&;)]+\s+)*(?:>>?)\s*([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /\bsed\s+(?:-[^\s]+\s+)*-i\b/u, operand: null },
+  { pattern: /\bpatch\b/u, operand: null },
+  { pattern: /\bgit\s+apply\b/u, operand: null },
+  { pattern: /\b(?:mv|cp|rsync)\s+(?:-[^\s]+\s+)*[^\s|&;)]+\s+([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /\brm\s+(?:-[^\s]+\s+)*([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /\btouch\s+([^\s|&;)]+)/u, operand: 1 },
+  { pattern: /(?:^|[|;&]\s*|\s)(?:>>?)\s*([A-Za-z0-9_~./\\-]+)/u, operand: 1 },
+]);
+
+function bashWriteEvidence(commandText, parsed, eventCwd = null) {
+  const workdir = locationProjection(parsed?.workdir, eventCwd);
+  const cwd = eventCwd ? locationProjection(eventCwd, null) : null;
+  for (const entry of BASH_WRITE_PATTERNS) {
+    const match = commandText.match(entry.pattern);
+    if (!match) continue;
+    const rawOperand = entry.operand !== null ? String(match[entry.operand] ?? "") : "";
+    let targets = [];
+    if (rawOperand && isPathLikeOperand(rawOperand)) {
+      targets = [locationProjection(rawOperand, eventCwd)].filter(Boolean);
+    }
+    if (targets.length === 0) targets = [workdir ?? cwd ?? null].filter(Boolean);
+    return { affectedPaths: [...new Set(targets)].slice(0, 4) };
+  }
+  return null;
+}
+
+function isPathLikeOperand(value) {
+  return /^(?:\/|\.{1,2}\/|~\/|[A-Za-z]:[\\/])/u.test(value)
+    || value.includes("/") || value.includes("\\");
+}
+
+// Hierarchy-preserving, privacy-safe location fact. A location inside the
+// session workspace keeps its relative structure ("<workspace-root>/rel/path")
+// so downstream overlap checks stay meaningful; anything else falls back to
+// the existing basename projection.
+function locationProjection(value, eventCwd = null) {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const flavor = absoluteFlavor(value);
+  if (flavor === null) return sanitizePrivateReviewText(value, { limit: 240 }) || null;
+  if (typeof eventCwd === "string" && absoluteFlavor(eventCwd) === flavor) {
+    const normalize = flavor === "win32" ? path.win32.normalize : path.posix.normalize;
+    const separator = flavor === "win32" ? path.win32.sep : path.posix.sep;
+    const base = normalize(eventCwd);
+    const target = normalize(value);
+    if (target === base) return sanitizePrivateReviewText(base.split(separator).filter(Boolean).at(-1) ?? base, { limit: 240 }) || null;
+    if (target.startsWith(`${base}${separator}`)) {
+      const relative = target.slice(base.length + 1);
+      const rootLabel = base.split(separator).filter(Boolean).at(-1) ?? "workspace";
+      return sanitizePrivateReviewText(`${rootLabel}/${relative.replaceAll("\\", "/")}`, { limit: 240 }) || null;
+    }
+  }
+  return selectedPath(value);
 }
 
 function normalizedUsage(usage) {
@@ -2476,7 +2564,7 @@ function normalizeDshEvents(event, sourceRef, options = {}) {
       toolInvocationId: event.data.callId,
       toolName,
       functionCallName: toolName,
-      ...toolArgumentFacts(toolName, event.data.arguments, options),
+      ...toolArgumentFacts(toolName, event.data.arguments, options, base.cwd),
       evidenceRef: normalizedEvidenceRef(sourceRef, event, "tool.call"),
       summary: `${toolName} request`,
     }];

@@ -219,6 +219,11 @@ export function deduplicateLifecycleEvents(events = []) {
       ...(requestEvent?.targetPaths && !canonical?.targetPaths ? { targetPaths: requestEvent.targetPaths } : {}),
       ...(requestEvent?.affectedPaths && !canonical?.affectedPaths ? { affectedPaths: requestEvent.affectedPaths } : {}),
       ...(requestEvent?.cwd && !canonical?.cwd ? { cwd: requestEvent.cwd } : {}),
+      ...(requestEvent?.operation && !canonical?.operation ? { operation: requestEvent.operation } : {}),
+      ...(requestEvent?.relevance && !canonical?.relevance ? { relevance: requestEvent.relevance } : {}),
+      ...(requestEvent?.reviewedAssociation !== undefined && canonical?.reviewedAssociation === undefined
+        ? { reviewedAssociation: requestEvent.reviewedAssociation }
+        : {}),
       evidenceRefs: refs,
       ...(permissionEvent?.permissionDecision ? { permissionDecision: permissionEvent.permissionDecision } : {}),
       ...(permissionEvent?.permissionMode ? { permissionMode: permissionEvent.permissionMode } : {}),
