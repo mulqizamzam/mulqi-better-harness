@@ -16,11 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Syntax check
+      - name: Syntax check (every tracked .mjs under scripts/)
         run: |
-          node --check index.js
-          node --check lib/provider.js
-          node --check lib/policy.js
+          git ls-files 'scripts/*.mjs' 'scripts/**/*.mjs' | xargs -r -n1 node --check
       - name: Materialize vendor audit manifest
         run: node scripts/self-audit/materialize-manifest.mjs
       - name: Run test suite
