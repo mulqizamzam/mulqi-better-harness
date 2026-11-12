@@ -1104,6 +1104,22 @@ function disabledRootWarnings(roots) {
     }));
 }
 
+// Discovery-gate artifact contract: the on-disk artifact filenames Qoder
+// writes and this adapter accepts as session evidence — *.jsonl transcripts
+// (conversation, logs segments, execution transcripts, cache), *.json
+// session/home records, plus the specific audit.jsonl and per-session
+// state.json side files. Pinned by tests/session-adapter-qoder.test.js.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "qoder",
+  artifactNames: Object.freeze([
+    /\.jsonl$/u,
+    /\.json$/u,
+    /^audit\.jsonl$/u,
+    /^state\.json$/u,
+  ]),
+  supportedVersions: null,
+});
+
 export class QoderSessionAnalyzer extends SessionAnalyzer {
   async resolveScope(options = {}) {
     const workspace = normalizeWorkspace(options.workspace);

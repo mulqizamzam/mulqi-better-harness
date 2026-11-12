@@ -1,0 +1,17 @@
+{
+  "platform": "dsh",
+  "artifacts": [
+    {
+      "file": "v4-header.session.jsonl",
+      "hostArtifactName": "session.v4.jsonl",
+      "version": 4,
+      "expected": "eligible"
+    },
+    {
+      "file": "unsupported-header.session.jsonl",
+      "hostArtifactName": "session.v99.jsonl",
+      "version": 99,
+      "expected": "unsupported-version"
+    }
+  ]
+}

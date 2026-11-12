@@ -1,0 +1,10 @@
+{
+  "platform": "pi",
+  "artifacts": [
+    {
+      "file": "2026-07-01T10-15-00_550e8400-e29b-41d4-a716-446655440000.jsonl",
+      "hostArtifactName": "2026-07-01T10-15-00_550e8400-e29b-41d4-a716-446655440000.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

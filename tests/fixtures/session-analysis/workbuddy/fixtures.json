@@ -1,0 +1,6 @@
+{
+  "platform": "workbuddy",
+  "artifacts": [
+    { "file": "wb-sess-0001.jsonl", "hostArtifactName": "wb-sess-0001.jsonl", "expected": "eligible" }
+  ]
+}

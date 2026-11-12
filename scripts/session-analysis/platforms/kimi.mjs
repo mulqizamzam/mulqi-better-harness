@@ -364,6 +364,22 @@ function dedupeEvents(events) {
   });
 }
 
+// Discovery-gate artifact contract: the on-disk artifact filenames Kimi Code
+// writes and this adapter accepts as session evidence (workspaces.json /
+// session_index.jsonl index the workspace dirs; state.json is an optional
+// side file; wire.jsonl is the required per-agent transcript). Pinned by
+// tests/session-adapter-kimi.test.js.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "kimi",
+  artifactNames: Object.freeze([
+    /^workspaces\.json$/u,
+    /^session_index\.jsonl$/u,
+    /^state\.json$/u,
+    /^wire\.jsonl$/u,
+  ]),
+  supportedVersions: null,
+});
+
 export class KimiSessionAnalyzer extends SessionAnalyzer {
   // Kimi Code does not document a session-id environment variable; follow the
   // <HOST>_SESSION_ID convention and return null when it is unset.

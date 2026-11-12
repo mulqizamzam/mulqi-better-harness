@@ -416,6 +416,20 @@ async function resolveSessionDirContract(options, home, workspace) {
   return { mode: "default", dir: path.join(home, "sessions") };
 }
 
+// Declared session-artifact contract for the discovery-gate battery: the
+// artifact filename patterns this adapter actually accepts as session
+// evidence, stated next to the walkFiles matcher that enforces them so a
+// host-side artifact rename cannot drift from the pinned fixtures silently.
+// supportedVersions is null: the session-header version field is recorded in
+// event summaries but never gated on.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "pi",
+  artifactNames: Object.freeze([
+    /^.+\.jsonl$/u, // sessions/<cwd-slug>/<timestamp>_<sessionId>.jsonl transcripts (walkFiles endsWith ".jsonl", maxDepth 1)
+  ]),
+  supportedVersions: null,
+});
+
 export class PiSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.PI_SESSION_ID ?? null;

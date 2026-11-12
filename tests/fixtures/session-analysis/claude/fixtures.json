@@ -1,0 +1,10 @@
+{
+  "platform": "claude",
+  "artifacts": [
+    {
+      "file": "3f2504e0-4f89-41d3-9a0c-0305e82c3369.jsonl",
+      "hostArtifactName": "3f2504e0-4f89-41d3-9a0c-0305e82c3369.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

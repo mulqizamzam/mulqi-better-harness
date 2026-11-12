@@ -443,6 +443,23 @@ async function listMatchingSessionGroups(sessionsRoot, scope) {
   return groups;
 }
 
+// Declared session-artifact contract for the discovery-gate battery: the
+// artifact filename patterns this adapter actually accepts as session
+// evidence, stated next to the per-file checks that enforce them so a
+// host-side artifact rename cannot drift from the pinned fixtures silently.
+// supportedVersions is null: grok enforces no host format-version gate.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "grok",
+  artifactNames: Object.freeze([
+    /^summary\.json$/u,       // session metadata: info.cwd + created_at/updated_at
+    /^updates\.jsonl$/u,      // authoritative ACP-shaped session transcript
+    /^chat_history\.jsonl$/u, // fallback transcript when updates.jsonl is absent
+    /^signals\.json$/u,       // session counters / context-window occupancy
+    /^\.cwd$/u,               // group-level cwd marker for long encoded-cwd groups
+  ]),
+  supportedVersions: null,
+});
+
 export class GrokSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.GROK_SESSION_ID ?? null;

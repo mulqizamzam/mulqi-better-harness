@@ -1,0 +1,7 @@
+{
+  "platform": "qoder",
+  "artifacts": [
+    { "file": "qdr-sess-0001.jsonl", "hostArtifactName": "qdr-sess-0001.jsonl", "expected": "eligible" },
+    { "file": "state.json", "hostArtifactName": "state.json", "expected": "eligible" }
+  ]
+}

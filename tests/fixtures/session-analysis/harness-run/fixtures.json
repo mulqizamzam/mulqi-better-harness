@@ -1,0 +1,7 @@
+{
+  "platform": "harness-run",
+  "artifacts": [
+    { "file": "trace.jsonl", "hostArtifactName": "trace.jsonl", "expected": "eligible" },
+    { "file": "revision.json", "hostArtifactName": "revision.json", "expected": "eligible" }
+  ]
+}

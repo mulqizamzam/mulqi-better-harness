@@ -1,0 +1,8 @@
+{
+  "platform": "kimi",
+  "artifacts": [
+    { "file": "workspaces.json", "hostArtifactName": "workspaces.json", "expected": "eligible" },
+    { "file": "state.json", "hostArtifactName": "state.json", "expected": "eligible" },
+    { "file": "wire.jsonl", "hostArtifactName": "wire.jsonl", "expected": "eligible" }
+  ]
+}

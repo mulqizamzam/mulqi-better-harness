@@ -1,0 +1,3 @@
+{"type":"session.start","timestamp":"2026-07-01T10:15:00.000Z","data":{"sessionId":"3f9a7b2e-1c5d-4e6f-8a9b-0c1d2e3f4a5b","selectedModel":"gpt-5-copilot","context":{"cwd":"/home/fixture-copilot/ws1"}}}
+{"type":"user.message","timestamp":"2026-07-01T10:15:05.000Z","data":{"content":"Add the Copilot discovery-gate battery."}}
+{"type":"assistant.message","timestamp":"2026-07-01T10:15:18.000Z","data":{"content":"Staged events.jsonl plus workspace.yaml under session-state.","model":"gpt-5-copilot","messageId":"msg_copilot_01","requestId":"req_copilot_01","outputTokens":412}}

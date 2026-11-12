@@ -525,6 +525,20 @@ function dedupeEvents(events) {
   });
 }
 
+// Declared session-artifact contract for the discovery-gate battery: the
+// artifact filename patterns this adapter actually accepts as session
+// evidence, stated next to the constants that enforce them so a host-side
+// artifact rename cannot drift from the pinned fixtures silently.
+// supportedVersions is null: copilot enforces no host format-version gate.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "copilot",
+  artifactNames: Object.freeze([
+    /^events\.jsonl$/u,  // session-state/<sessionId>/events.jsonl typed lifecycle transcript (TRANSCRIPT_FILE)
+    /^workspace\.yaml$/u, // session-state/<sessionId>/workspace.yaml descriptor (id + cwd keys) (WORKSPACE_FILE)
+  ]),
+  supportedVersions: null,
+});
+
 export class CopilotSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.COPILOT_SESSION_ID ?? null;

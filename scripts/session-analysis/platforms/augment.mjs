@@ -447,6 +447,18 @@ function dedupeEvents(events) {
   });
 }
 
+// Declared session-artifact contract: every artifact filename pattern the
+// discovery code accepts as session evidence. The on-disk shape is pinned by
+// tests/session-adapter-augment.test.js (fixture + fixtures.json sidecar).
+// The matcher accepts *.json and excludes *.tmp; a name cannot end in both
+// ".json" and ".tmp", so the acceptance set is exactly *.json. No
+// format-version gate exists in this adapter, so supportedVersions is null.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "augment",
+  artifactNames: Object.freeze([/\.json$/]),
+  supportedVersions: null,
+});
+
 export class AugmentSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return null;

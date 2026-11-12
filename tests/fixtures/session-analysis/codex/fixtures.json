@@ -1,0 +1,10 @@
+{
+  "platform": "codex",
+  "artifacts": [
+    {
+      "file": "rollout-2026-07-01T09-30-00-f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl",
+      "hostArtifactName": "rollout-2026-07-01T09-30-00-f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

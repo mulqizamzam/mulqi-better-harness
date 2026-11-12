@@ -1,0 +1,72 @@
+{
+  "sessionId": "2e9d8c7b-6a5f-4e3d-bc1a-0f9e8d7c6b5a",
+  "created": "2026-07-01T09:30:00.000Z",
+  "modified": "2026-07-01T09:35:00.000Z",
+  "chatHistory": [
+    {
+      "exchange": {
+        "request_id": "req-01",
+        "request_nodes": [
+          {
+            "id": 1,
+            "type": 1,
+            "text_node": { "content": "fix the flaky build test" },
+            "ide_state_node": {
+              "workspace_folders": [
+                { "folder_root": "/home/fixture-augment/ws1" }
+              ],
+              "current_terminal": { "current_working_directory": "/home/fixture-augment/ws1/src" }
+            },
+            "timestamp_ms": 1782898200000
+          }
+        ],
+        "response_nodes": [
+          {
+            "id": 2,
+            "type": 0,
+            "content": "I'll read the failing test first.",
+            "timestamp_ms": 1782898230000
+          },
+          {
+            "id": 3,
+            "type": 2,
+            "tool_use": {
+              "tool_name": "file_search",
+              "tool_use_id": "tool-01",
+              "started_at_ms": 1782898250000,
+              "completed_at_ms": 1782898260000,
+              "input_json": "{\"query\":\"build.test.js\"}"
+            },
+            "timestamp_ms": 1782898260000
+          }
+        ]
+      }
+    },
+    {
+      "exchange": {
+        "request_id": "req-02",
+        "request_nodes": [
+          {
+            "id": 4,
+            "type": 2,
+            "tool_result_node": {
+              "tool_use_id": "tool-01",
+              "content": "tests/build.test.js:42 — flaky assertion",
+              "is_error": false
+            },
+            "timestamp_ms": 1782898270000
+          }
+        ],
+        "response_nodes": [
+          {
+            "id": 5,
+            "type": 0,
+            "content": "Patched the flaky assertion.",
+            "token_usage": { "input_tokens": 1500, "output_tokens": 60, "cache_read_input_tokens": 500 },
+            "timestamp_ms": 1782898500000
+          }
+        ]
+      }
+    }
+  ]
+}

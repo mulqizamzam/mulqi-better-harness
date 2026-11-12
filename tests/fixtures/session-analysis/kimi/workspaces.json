@@ -1,0 +1,7 @@
+{
+  "workspaces": {
+    "wd_ws1_abcd1234": {
+      "root": "/home/fixture-kimi/ws1"
+    }
+  }
+}

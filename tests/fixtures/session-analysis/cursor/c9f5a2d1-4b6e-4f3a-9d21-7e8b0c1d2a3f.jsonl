@@ -1,0 +1,3 @@
+{"role":"user","_timestamp":"2026-07-01T10:15:00.000Z","message":{"content":[{"type":"text","text":"Pin the Cursor discovery gate with a staged fixture."}]}}
+{"role":"assistant","_timestamp":"2026-07-01T10:15:09.000Z","message":{"content":[{"type":"text","text":"Staged the agent transcript under the workspace-slug project directory."}]},"input_tokens":1188,"output_tokens":241}
+{"type":"turn_ended","status":"success","_timestamp":"2026-07-01T10:15:11.000Z"}

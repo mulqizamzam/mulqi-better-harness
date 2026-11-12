@@ -367,6 +367,19 @@ async function listProjectDirectories(projectsRoot, contracts) {
     .filter(Boolean);
 }
 
+// Discovery-gate artifact contract: the on-disk artifact filenames WorkBuddy
+// writes and this adapter accepts as session evidence — the session
+// transcripts <sessionId>.jsonl under the slug-keyed project dir
+// <home>/projects/<workspace-slug>/. Pinned by
+// tests/session-adapter-workbuddy.test.js.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "workbuddy",
+  artifactNames: Object.freeze([
+    /\.jsonl$/u,
+  ]),
+  supportedVersions: null,
+});
+
 export class WorkbuddySessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.WORKBUDDY_SESSION_ID ?? null;

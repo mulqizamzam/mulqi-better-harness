@@ -1,0 +1,15 @@
+{
+  "platform": "grok",
+  "artifacts": [
+    {
+      "file": "summary.json",
+      "hostArtifactName": "summary.json",
+      "expected": "eligible"
+    },
+    {
+      "file": "updates.jsonl",
+      "hostArtifactName": "updates.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

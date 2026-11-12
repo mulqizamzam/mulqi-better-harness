@@ -438,6 +438,16 @@ function dedupeEvents(events) {
   });
 }
 
+// Declared session-artifact contract: every artifact filename pattern the
+// discovery code accepts as session evidence. The on-disk shape is pinned by
+// tests/session-adapter-claude.test.js (fixture + fixtures.json sidecar).
+// No format-version gate exists in this adapter, so supportedVersions is null.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "claude",
+  artifactNames: Object.freeze([/\.jsonl$/]),
+  supportedVersions: null,
+});
+
 export class ClaudeSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.CLAUDE_SESSION_ID ?? null;

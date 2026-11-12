@@ -290,6 +290,16 @@ function dedupeEvents(events) {
   });
 }
 
+// Declared session-artifact contract: every artifact filename pattern the
+// discovery code accepts as session evidence. The on-disk shape is pinned by
+// tests/session-adapter-qwen.test.js (fixture + fixtures.json sidecar).
+// No format-version gate exists in this adapter, so supportedVersions is null.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "qwen",
+  artifactNames: Object.freeze([/\.jsonl$/]),
+  supportedVersions: null,
+});
+
 export class QwenSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.QWEN_SESSION_ID ?? process.env.QWENCODE_SESSION_ID ?? null;

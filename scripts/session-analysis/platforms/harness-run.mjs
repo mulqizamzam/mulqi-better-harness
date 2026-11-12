@@ -7,6 +7,20 @@ import { normalizeWorkspace } from "../paths.mjs";
 
 const MAX_TRACE_BYTES = 5_000_000;
 
+// Discovery-gate artifact contract: the on-disk artifact filenames the
+// harness-run evidence writer produces and this adapter accepts as session
+// evidence — the per-trial trace.jsonl transcripts and the per-variant
+// revision.json side file that gates each trial. Pinned by
+// tests/session-adapter-harness-run.test.js.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "harness-run",
+  artifactNames: Object.freeze([
+    /^trace\.jsonl$/u,
+    /^revision\.json$/u,
+  ]),
+  supportedVersions: null,
+});
+
 export class HarnessRunSessionAnalyzer extends SessionAnalyzer {
   async resolveScope(options = {}) {
     const workspace = normalizeWorkspace(options.workspace);

@@ -1,0 +1,10 @@
+{
+  "platform": "qwen",
+  "artifacts": [
+    {
+      "file": "7c2f5a6e-9b8d-4e12-af34-c5d6e7f80912.jsonl",
+      "hostArtifactName": "7c2f5a6e-9b8d-4e12-af34-c5d6e7f80912.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

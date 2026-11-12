@@ -1,0 +1,2 @@
+{"type":"message","role":"user","sessionId":"wb-sess-0001","cwd":"/home/fixture-workbuddy/ws1","timestamp":1794128400000,"content":[{"type":"text","text":"hello workbuddy"}]}
+{"type":"message","role":"assistant","sessionId":"wb-sess-0001","cwd":"/home/fixture-workbuddy/ws1","timestamp":1794128401000,"content":[{"type":"text","text":"hi"}],"providerData":{"model":"workbuddy-5","messageId":"msg-0001","usage":{"input_tokens":12,"output_tokens":7}}}

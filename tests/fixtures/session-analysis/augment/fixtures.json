@@ -1,0 +1,10 @@
+{
+  "platform": "augment",
+  "artifacts": [
+    {
+      "file": "2e9d8c7b-6a5f-4e3d-bc1a-0f9e8d7c6b5a.json",
+      "hostArtifactName": "2e9d8c7b-6a5f-4e3d-bc1a-0f9e8d7c6b5a.json",
+      "expected": "eligible"
+    }
+  ]
+}

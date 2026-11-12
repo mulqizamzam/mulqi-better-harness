@@ -701,6 +701,18 @@ async function firstJsonlRecord(filePath, predicate = null) {
   return first;
 }
 
+// Declared session-artifact contract: every artifact filename pattern the
+// discovery code accepts as session evidence. The on-disk shape is pinned by
+// tests/session-adapter-codex.test.js (fixture + fixtures.json sidecar).
+// Rollout files are matched by extension only; the host's cli_version in
+// session_meta is metadata, not a format-version gate, so supportedVersions
+// is null.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "codex",
+  artifactNames: Object.freeze([/\.jsonl$/]),
+  supportedVersions: null,
+});
+
 export class CodexSessionAnalyzer extends SessionAnalyzer {
   async resolveScope(options = {}) {
     const workspace = normalizeWorkspace(options.workspace);

@@ -1,0 +1,15 @@
+{
+  "platform": "copilot",
+  "artifacts": [
+    {
+      "file": "events.jsonl",
+      "hostArtifactName": "events.jsonl",
+      "expected": "eligible"
+    },
+    {
+      "file": "workspace.yaml",
+      "hostArtifactName": "workspace.yaml",
+      "expected": "eligible"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"qdr-sess-0001","timestamp":"2026-11-08T09:00:00.000Z","cwd":"/home/fixture-qoder/ws1","message":{"role":"user","content":"hello qoder"}}
+{"type":"assistant","sessionId":"qdr-sess-0001","timestamp":"2026-11-08T09:00:02.000Z","cwd":"/home/fixture-qoder/ws1","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}

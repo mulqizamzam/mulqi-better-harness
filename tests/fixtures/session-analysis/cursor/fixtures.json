@@ -1,0 +1,10 @@
+{
+  "platform": "cursor",
+  "artifacts": [
+    {
+      "file": "c9f5a2d1-4b6e-4f3a-9d21-7e8b0c1d2a3f.jsonl",
+      "hostArtifactName": "c9f5a2d1-4b6e-4f3a-9d21-7e8b0c1d2a3f.jsonl",
+      "expected": "eligible"
+    }
+  ]
+}

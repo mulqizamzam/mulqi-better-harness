@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"id":"f47ac10b-58cc-4372-a567-0e02b2c3d479","timestamp":"2026-07-01T09:30:00.123Z","cwd":"/home/fixture-codex/ws1","origin":"cli","cli_version":"0.52.0","model_provider":"openai"}}
+{"type":"turn_context","payload":{"model":"gpt-5.1-codex","effort":"medium","timestamp":"2026-07-01T09:30:01.000Z"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"fix the flaky build test","timestamp":"2026-07-01T09:30:05.000Z"}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll read the failing test first."}],"timestamp":"2026-07-01T09:30:20.000Z"}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"output_tokens":80,"cached_input_tokens":500,"cache_write_input_tokens":20,"total_tokens":1600},"last_token_usage":{"input_tokens":300,"output_tokens":40,"cached_input_tokens":100,"cache_write_input_tokens":10,"total_tokens":350},"model":"gpt-5.1-codex","model_context_window":272000,"timestamp":"2026-07-01T09:35:00.000Z"}}}

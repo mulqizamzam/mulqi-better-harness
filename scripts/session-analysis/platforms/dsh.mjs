@@ -21,6 +21,7 @@ import { WORKSPACE_CWD_MATCH, classifyWorkspaceCwd } from "../workspace-match.mj
 
 export const DSH_ADAPTER_VERSION = "dsh-v1";
 export const DSH_SESSION_FORMAT_VERSION = 0;
+export const DSH_SESSION_FORMAT_VERSIONS = [0, 4];
 
 const ZSTD_MAGIC = 0xFD2FB528;
 const PACKED_TYPES = new Set(["text-chunks", "reasoning-chunks", "tool-call-chunks"]);
@@ -40,6 +41,8 @@ const VALIDATED_KNOWN_UNSUPPORTED_TYPES = new Set([
   "team/member", "team/message/delivered", "team/message/queued", "team/task",
   "tool-workflow/agent-start", "tool-workflow/run-end", "tool-workflow/run-start",
   "tool/code-dispatch", "tool/code-dispatch-start", "schedule/change", "web/deepseek-search-llm-request",
+  "assistant/attempt", "deliverables/presented", "developer/message", "job/registered", "job/settled",
+  "subagent/catalog", "system/message", "workspace/changes",
 ]);
 const CONTROL_TYPES = new Set(["step/start", "step/end"]);
 const KNOWN_EVENT_TYPES = new Set([
@@ -55,17 +58,36 @@ const KNOWN_EVENT_TYPES = new Set([
   "tool-workflow/agent-end", "tool-workflow/agent-start", "tool-workflow/run-end",
   "tool-workflow/run-start", "tool/call", "tool/code-dispatch", "tool/code-dispatch-start",
   "tool/result", "turn/end", "turn/start", "user/message", "web/deepseek-search-llm-request",
+  "assistant/attempt", "deliverables/presented", "developer/message", "job/registered",
+  "job/settled", "subagent/catalog", "system/message", "workspace/changes",
 ]);
 const HEADER_KEYS = new Set([
   "type", "version", "id", "cwd", "createdAt", "parentSession", "seedLength", "origin",
-  "delegationDepth", "agentPreset",
+  "delegationDepth", "agentPreset", "isSeeded",
 ]);
 const EVENT_KEYS = new Set(["type", "seq", "time", "data", "ignorable", "sourceEventSeqs", "surfaceOp"]);
 const WINDOWS_ABSOLUTE = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/u;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const DSH_SESSION_ARTIFACT_NAME = /^session\.(v\d+)?\.jsonl(\.zstd)?$/u;
+function isDshSessionArtifactName(name) {
+  return typeof name === "string" && DSH_SESSION_ARTIFACT_NAME.test(name);
+}
 
-function fail(code, message = code) {
-  throw Object.assign(new Error(message), { code });
+// Declared session-artifact contract for the session-adapter registry gate
+// (tests/session-adapter-registry.test.js): the artifact names this adapter
+// accepts and the format-version range it enforces, stated next to the code
+// that enforces them so a host-side version/name change cannot drift from
+// the pinned fixtures silently.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "dsh",
+  artifactNames: Object.freeze([DSH_SESSION_ARTIFACT_NAME]),
+  supportedVersions: DSH_SESSION_FORMAT_VERSIONS,
+});
+
+function fail(code, message = code, details = undefined) {
+  const error = Object.assign(new Error(message), { code });
+  if (details !== undefined) Object.assign(error, details);
+  throw error;
 }
 
 function plain(value) {
@@ -278,7 +300,12 @@ function validateHeader(header) {
     if (!Object.hasOwn(header, key)) fail("DSH_INVALID_HEADER");
   }
   if (header.type !== "session") fail("DSH_INVALID_HEADER");
-  if (header.version !== DSH_SESSION_FORMAT_VERSION) fail("DSH_UNSUPPORTED_SESSION_FORMAT");
+  if (!Number.isSafeInteger(header.version)
+    || header.version < DSH_SESSION_FORMAT_VERSIONS[0]
+    || header.version > DSH_SESSION_FORMAT_VERSIONS[1]) {
+    fail("DSH_UNSUPPORTED_SESSION_FORMAT", "observed session format version is outside the supported range",
+      { observedVersion: header.version, supportedRange: [...DSH_SESSION_FORMAT_VERSIONS] });
+  }
   if (typeof header.id !== "string") fail("DSH_INVALID_HEADER");
   if (!absoluteFlavor(header.cwd) || !validDshEpochMillis(header.createdAt) || !safeNonnegative(header.delegationDepth)) {
     fail("DSH_INVALID_HEADER");
@@ -288,12 +315,17 @@ function validateHeader(header) {
   }
   if (Object.hasOwn(header, "seedLength") && !safeNonnegative(header.seedLength)) fail("DSH_INVALID_HEADER");
   if (Object.hasOwn(header, "origin") && header.origin !== "subagent") fail("DSH_INVALID_HEADER");
+  if (Object.hasOwn(header, "isSeeded") && typeof header.isSeeded !== "boolean") fail("DSH_INVALID_HEADER");
   return header;
 }
 
 function validateSurface(event) {
   const eligible = new Set(["user/message", "assistant/message", "tool/result"]);
-  if ((Object.hasOwn(event, "sourceEventSeqs") || Object.hasOwn(event, "surfaceOp")) && !eligible.has(event.type)) {
+  // Pinned rows whose message content also surfaces: the host writes surfaceOp on
+  // system/developer message rows as well, but the surface-node fold (applySurfaceEvent)
+  // only tracks the three eligible kinds, so these may carry surface fields optionally.
+  const carrier = new Set([...eligible, "system/message", "developer/message"]);
+  if ((Object.hasOwn(event, "sourceEventSeqs") || Object.hasOwn(event, "surfaceOp")) && !carrier.has(event.type)) {
     fail("DSH_EVENT_SHAPE_DRIFT");
   }
   if (eligible.has(event.type) && !Object.hasOwn(event, "surfaceOp")) fail("DSH_EVENT_SHAPE_DRIFT");
@@ -306,8 +338,12 @@ function validateSurface(event) {
   }
   if (Object.hasOwn(event, "surfaceOp")) {
     const op = event.surfaceOp;
-    if (op !== "append" && !(exactKeys(op, ["op", "start", "end"]) && op.op === "replace"
-      && safeNonnegative(op.start) && safeNonnegative(op.end))) fail("DSH_EVENT_SHAPE_DRIFT");
+    const valid = op === "append"
+      || (exactKeys(op, ["op", "startSeq", "endSeq"]) && op.op === "replace"
+        && safeNonnegative(op.startSeq) && safeNonnegative(op.endSeq))
+      || (exactKeys(op, ["op", "start", "end"]) && op.op === "replace"
+        && safeNonnegative(op.start) && safeNonnegative(op.end));
+    if (!valid) fail("DSH_EVENT_SHAPE_DRIFT");
   }
 }
 
@@ -333,7 +369,7 @@ export function isDshJsonValue(value) {
 
 function validateTokenUsage(usage) {
   if (!exactKeys(usage, ["inputTokens", "outputTokens"],
-    ["cacheReadTokens", "cacheWriteTokens", "reasoningTokens"])
+    ["cacheReadTokens", "cacheWriteTokens", "reasoningTokens", "totalTokens"])
     || Object.values(usage).some((value) => typeof value !== "number")) fail("DSH_EVENT_SHAPE_DRIFT");
 }
 
@@ -469,9 +505,10 @@ function validateTeamEvent(event) {
     || !nonemptyString(data.messageId) || !nonemptyString(data.targetId)) fail("DSH_EVENT_SHAPE_DRIFT");
 }
 
-function validateMessage(message, role) {
-  if (!exactKeys(message, ["id", "role", "content", "source"])
-    || message.role !== role || typeof message.id !== "string"
+function validateMessage(message, roles, extraKeys = []) {
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  if (!exactKeys(message, ["id", "role", "content", "source"], extraKeys)
+    || !allowed.includes(message.role) || typeof message.id !== "string"
     || !Array.isArray(message.content) || !plain(message.source)) fail("DSH_EVENT_SHAPE_DRIFT");
   for (const part of message.content) validateContentBlock(part);
 }
@@ -545,7 +582,7 @@ function validateUserSource(source) {
     }
     return;
   }
-  if (["coordinator", "subagent-report"].includes(source.kind)) {
+  if (["coordinator", "subagent-report", "agent-message"].includes(source.kind)) {
     if (!exactKeys(source, ["kind", "form", "senderSessionId"]) || source.form !== "relay"
       || typeof source.senderSessionId !== "string") fail("DSH_EVENT_SHAPE_DRIFT");
     return;
@@ -567,6 +604,40 @@ function validateUserSource(source) {
       || typeof source.name !== "string") fail("DSH_EVENT_SHAPE_DRIFT");
     return;
   }
+  if (source.kind === "user-approval" || source.kind === "dsh-session-title-llm") {
+    if (!exactKeys(source, ["kind"])) fail("DSH_EVENT_SHAPE_DRIFT");
+    return;
+  }
+  if (source.kind === "compact-checkpoint") {
+    if (!exactKeys(source, ["kind", "compactionId"]) || !nonemptyString(source.compactionId)) {
+      fail("DSH_EVENT_SHAPE_DRIFT");
+    }
+    return;
+  }
+  if (source.kind === "dsh-mnemon") {
+    if (source.form === "recall" || source.form === "instructions") {
+      if (!exactKeys(source, ["kind", "form"])) fail("DSH_EVENT_SHAPE_DRIFT");
+      return;
+    }
+    if (source.form === "memory-snapshot") {
+      if (!exactKeys(source, ["kind", "form", "snapshot"]) || !isDshJsonValue(source.snapshot)) {
+        fail("DSH_EVENT_SHAPE_DRIFT");
+      }
+      return;
+    }
+    fail("DSH_EVENT_SHAPE_DRIFT");
+  }
+  if (["model-selection", "repeat-tool-reminder", "tool-jobs"].includes(source.kind)) {
+    if (!exactKeys(source, ["kind", "form", "summary"]) || source.form !== "notice"
+      || typeof source.summary !== "string") fail("DSH_EVENT_SHAPE_DRIFT");
+    return;
+  }
+  if (["mulqi-superpowers-bootstrap", "runtime-context", "time-context"].includes(source.kind)) {
+    if (!exactKeys(source, ["kind", "form", "sections"]) || source.form !== "snapshot"
+      || !Array.isArray(source.sections) || source.sections.some((section) => !exactKeys(section, ["name", "text"])
+        || typeof section.name !== "string" || typeof section.text !== "string")) fail("DSH_EVENT_SHAPE_DRIFT");
+    return;
+  }
   fail("DSH_EVENT_SHAPE_DRIFT");
 }
 
@@ -577,14 +648,22 @@ function validateAssistantSource(source) {
 }
 
 function validateToolResultMessage(message, eventData) {
-  validateMessage(message, "user");
+  validateMessage(message, ["user", "tool"], ["toolCallId", "isError"]);
   if (!exactKeys(message.source, ["kind", "callId"]) || message.source.kind !== "tool"
     || typeof message.source.callId !== "string" || message.content.length !== 1) fail("DSH_EVENT_SHAPE_DRIFT");
+  if (Object.hasOwn(message, "toolCallId")
+    && (typeof message.toolCallId !== "string" || message.toolCallId !== message.source.callId)) {
+    fail("DSH_EVENT_SHAPE_DRIFT");
+  }
+  if (Object.hasOwn(message, "isError") && typeof message.isError !== "boolean") fail("DSH_EVENT_SHAPE_DRIFT");
   const result = message.content[0];
-  if (!exactKeys(result, ["type", "toolCallId", "content"], ["isError"])
-    || result.type !== "tool-result" || result.toolCallId !== message.source.callId
-    || !Array.isArray(result.content)
-    || (Object.hasOwn(result, "isError") && typeof result.isError !== "boolean")) fail("DSH_EVENT_SHAPE_DRIFT");
+  // The host dialect writes a plain text block as the result payload; the legacy
+  // envelope form keeps its own pinned contract.
+  if (result?.type === "tool-result"
+    && (!exactKeys(result, ["type", "toolCallId", "content"], ["isError"])
+      || result.toolCallId !== message.source.callId
+      || !Array.isArray(result.content)
+      || (Object.hasOwn(result, "isError") && typeof result.isError !== "boolean"))) fail("DSH_EVENT_SHAPE_DRIFT");
   if (Object.hasOwn(eventData, "error") && (!exactKeys(eventData.error, ["name", "code"])
     || typeof eventData.error.name !== "string" || typeof eventData.error.code !== "string")) {
     fail("DSH_EVENT_SHAPE_DRIFT");
@@ -672,12 +751,13 @@ function validateSupportedEvent(event) {
       validateUserSource(data.source);
       break;
     case "assistant/message":
-      if (!exactKeys(data, ["turn", "step", "message"], ["usage", "interrupted"]) || !safePositive(data.turn)
+      if (!exactKeys(data, ["turn", "step", "message"], ["usage", "interrupted", "stream"]) || !safePositive(data.turn)
         || !safePositive(data.step)) fail("DSH_EVENT_SHAPE_DRIFT");
       validateMessage(data.message, "assistant");
       validateAssistantSource(data.message.source);
       if (Object.hasOwn(data, "usage")) validateTokenUsage(data.usage);
       if (Object.hasOwn(data, "interrupted") && data.interrupted !== true) fail("DSH_EVENT_SHAPE_DRIFT");
+      if (Object.hasOwn(data, "stream") && !isDshJsonValue(data.stream)) fail("DSH_EVENT_SHAPE_DRIFT");
       break;
     case "assistant/chunk":
       if (!exactKeys(data, ["turn", "step", "chunk"]) || !safePositive(data.turn)
@@ -701,8 +781,9 @@ function validateSupportedEvent(event) {
 }
 
 function validateProviderModelRoute(route) {
-  return exactKeys(route, ["provider", "model"])
-    && nonemptyString(route.provider) && nonemptyString(route.model);
+  return exactKeys(route, ["provider", "model"], ["reasoningEffort"])
+    && nonemptyString(route.provider) && nonemptyString(route.model)
+    && (Object.hasOwn(route, "reasoningEffort") ? nonemptyString(route.reasoningEffort) : true);
 }
 
 // Pinned core payloads that are required for replay but intentionally omitted from BH normalization.
@@ -842,7 +923,47 @@ function validateKnownUnsupportedEvent(event) {
       validateTeamEvent(event);
       break;
     case "session/end-seed":
-      if (!exactKeys(data, [])) fail("DSH_EVENT_SHAPE_DRIFT");
+      if (!exactKeys(data, [], ["inherited"])
+        || (Object.hasOwn(data, "inherited") && typeof data.inherited !== "boolean")) fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "job/registered":
+      if (!exactKeys(data, ["jobId", "owner", "kind", "label", "startedAt", "toolCall"])
+        || !nonemptyString(data.jobId) || !nonemptyString(data.owner) || !nonemptyString(data.kind)
+        || typeof data.label !== "string" || !validDshEpochMillis(data.startedAt)
+        || !isDshJsonValue(data.toolCall)) fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "job/settled":
+      if (!exactKeys(data, ["jobId", "owner", "kind", "label", "startedAt", "toolCall",
+        "finishedAt", "status", "cause", "producerReported", "detail"])
+        || !nonemptyString(data.jobId) || !nonemptyString(data.owner) || !nonemptyString(data.kind)
+        || typeof data.label !== "string" || !validDshEpochMillis(data.startedAt)
+        || !isDshJsonValue(data.toolCall) || !validDshEpochMillis(data.finishedAt)
+        || typeof data.status !== "string" || typeof data.cause !== "string"
+        || typeof data.producerReported !== "boolean" || typeof data.detail !== "string") {
+        fail("DSH_EVENT_SHAPE_DRIFT");
+      }
+      break;
+    case "system/message":
+    case "developer/message":
+      if (!exactKeys(data, ["turn", "step", "message"]) || !safePositive(data.turn) || !safePositive(data.step)
+        || !isDshJsonValue(data.message)) fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "assistant/attempt":
+      if (!exactKeys(data, ["turn", "step", "stream"]) || !safePositive(data.turn) || !safePositive(data.step)
+        || !isDshJsonValue(data.stream)) fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "subagent/catalog":
+      if (!exactKeys(data, ["version", "childId", "childCreatedAt", "mode", "label"])
+        || !safeNonnegative(data.version) || !nonemptyString(data.childId)
+        || !validDshEpochMillis(data.childCreatedAt) || !nonemptyString(data.mode)
+        || typeof data.label !== "string") fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "deliverables/presented":
+      if (!exactKeys(data, ["turn", "callId", "files"]) || !safePositive(data.turn)
+        || !nonemptyString(data.callId) || !isDshJsonValue(data.files)) fail("DSH_EVENT_SHAPE_DRIFT");
+      break;
+    case "workspace/changes":
+      if (!exactKeys(data, ["turn"]) || !safePositive(data.turn)) fail("DSH_EVENT_SHAPE_DRIFT");
       break;
     default:
       fail("DSH_KNOWN_EVENT_UNVALIDATED");
@@ -874,8 +995,9 @@ function validateToolSchema(tool) {
 }
 
 function validateRequestHeader(data) {
-  if (!exactKeys(data, ["header", "reason"])
-    || !["initial", "resume", "change"].includes(data.reason)
+  if (!exactKeys(data, ["header", "reason"], ["startsSeries"])
+    || !["initial", "resume", "change", "series"].includes(data.reason)
+    || (Object.hasOwn(data, "startsSeries") && typeof data.startsSeries !== "boolean")
     || !exactKeys(data.header, ["config"], ["adapterDefaults", "system", "tools"])) {
     fail("DSH_EVENT_SHAPE_DRIFT");
   }
@@ -911,7 +1033,14 @@ function validateInboxSplice(data) {
     || !Array.isArray(data.inserted)
     || (Object.hasOwn(data, "removedCount") && !safeNonnegative(data.removedCount))
     || (Object.hasOwn(data, "outcome") && data.outcome !== "canceled")) fail("DSH_EVENT_SHAPE_DRIFT");
-  for (const message of data.inserted) validateUserMessageValue(message);
+  for (const message of data.inserted) {
+    // Spliced inbox content is synthetic user context: the host writes source-less
+    // user messages ({id, role, content}) as well as sourced ones.
+    if (!exactKeys(message, ["id", "role", "content"], ["source"]) || message.role !== "user"
+      || typeof message.id !== "string" || !Array.isArray(message.content)) fail("DSH_EVENT_SHAPE_DRIFT");
+    for (const part of message.content) validateContentBlock(part);
+    if (Object.hasOwn(message, "source")) validateUserSource(message.source);
+  }
 }
 
 function validateSessionTitle(data) {
@@ -949,29 +1078,34 @@ function validateAnyMessage(message) {
 }
 
 function validateSessionTitleRequest(data) {
-  if (!exactKeys(data, ["titleProvider", "messageSeqs", "route", "system", "messages", "maxTokens"])
+  if (!exactKeys(data, ["titleProvider", "messageSeqs", "route", "system", "messages", "maxTokens"],
+    ["reasoningEffort"])
     || !nonemptyString(data.titleProvider) || !Array.isArray(data.messageSeqs) || data.messageSeqs.length === 0
     || data.messageSeqs.some((seq) => !safeNonnegative(seq))
     || !strictlyIncreasing(data.messageSeqs)
     || !exactKeys(data.route, ["provider", "model"]) || !nonemptyString(data.route.provider)
     || !nonemptyString(data.route.model) || typeof data.system !== "string" || !Array.isArray(data.messages)
-    || !safePositive(data.maxTokens)) fail("DSH_EVENT_SHAPE_DRIFT");
+    || !safePositive(data.maxTokens)
+    || (Object.hasOwn(data, "reasoningEffort") && !nonemptyString(data.reasoningEffort))) fail("DSH_EVENT_SHAPE_DRIFT");
   for (const message of data.messages) validateAnyMessage(message);
 }
 
 function validateSubagentDescriptor(data) {
-  if (!plain(data) || data.version !== 2 || !["one-shot", "continuable"].includes(data.mode)
+  if (!plain(data) || ![2, 3].includes(data.version) || !["one-shot", "continuable"].includes(data.mode)
     || typeof data.provider !== "string") fail("DSH_EVENT_SHAPE_DRIFT");
-  const optionalStrings = ["label", "agentProvider", "agentModel", "persona"];
+  const optionalStrings = ["label", "agentProvider", "agentModel", "persona",
+    ...(data.version === 3 ? ["agentReasoningEffort"] : [])];
   if (optionalStrings.some((key) => Object.hasOwn(data, key) && typeof data[key] !== "string")) {
     fail("DSH_EVENT_SHAPE_DRIFT");
   }
   if (data.mode === "one-shot") {
-    if (!exactKeys(data, ["version", "mode", "provider"], ["label"])) fail("DSH_EVENT_SHAPE_DRIFT");
+    if (!exactKeys(data, ["version", "mode", "provider"],
+      ["label", ...(data.version === 3 ? ["agentReasoningEffort"] : [])])) fail("DSH_EVENT_SHAPE_DRIFT");
     return;
   }
   if (!exactKeys(data, ["version", "mode", "provider", "label"],
-    ["agentProvider", "agentModel", "persona", "toolFilter"])) fail("DSH_EVENT_SHAPE_DRIFT");
+    ["agentProvider", "agentModel", "persona", "toolFilter",
+      ...(data.version === 3 ? ["agentReasoningEffort"] : [])])) fail("DSH_EVENT_SHAPE_DRIFT");
   if (Object.hasOwn(data, "toolFilter")) {
     const filter = data.toolFilter;
     if (!exactKeys(filter, [], ["allow", "deny"])
@@ -1274,25 +1408,58 @@ function validateToolResultRewrite(event, shadowedSeqs, events) {
   if (original?.type !== "tool/result") fail("DSH_SURFACE_TOOL_REWRITE_INVALID");
   const originalRest = structuredClone(original.data);
   const replacementRest = structuredClone(event.data);
-  originalRest.message.content[0].content = null;
-  replacementRest.message.content[0].content = null;
+  // Null out the result payload by block form: the legacy tool-result envelope
+  // carries its payload in .content; the host dialect's plain text block in .text.
+  const nullPayload = (rest) => {
+    const block = rest?.message?.content?.[0];
+    if (!block) return;
+    if (block.type === "text") block.text = null;
+    else block.content = null;
+  };
+  nullPayload(originalRest);
+  nullPayload(replacementRest);
   if (!deepJsonEqual(originalRest, replacementRest)) fail("DSH_SURFACE_TOOL_REWRITE_INVALID");
 }
 
 function applySurfaceEvent(event, nodes, events) {
-  if (!new Set(["user/message", "assistant/message", "tool/result"]).has(event.type)) return;
-  if (event.surfaceOp === "append") {
-    nodes.push(event.seq);
+  // The three eligible kinds fold into the surface node list; pinned carrier rows
+  // (system/developer messages) shadow earlier events through the same surface
+  // provenance contract but are not themselves surface nodes.
+  const eligible = new Set(["user/message", "assistant/message", "tool/result"]);
+  const carrier = new Set([...eligible, "system/message", "developer/message"]);
+  if (!carrier.has(event.type)) return;
+  const op = event.surfaceOp;
+  if (op === "append") {
+    if (eligible.has(event.type)) nodes.push(event.seq);
     return;
   }
-  const startIndex = nodes.indexOf(event.surfaceOp.start);
-  const endIndex = nodes.indexOf(event.surfaceOp.end);
-  if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) fail("DSH_SURFACE_RANGE_INVALID");
-  const shadowedSeqs = nodes.slice(startIndex, endIndex + 1);
+  const startSeq = Object.hasOwn(op, "startSeq") ? op.startSeq : op.start;
+  const endSeq = Object.hasOwn(op, "endSeq") ? op.endSeq : op.end;
+  const shadowedSeqs = [];
+  const startIndex = nodes.indexOf(startSeq);
+  if (startIndex !== -1) {
+    const endIndex = nodes.indexOf(endSeq);
+    if (endIndex === -1 || startIndex > endIndex) fail("DSH_SURFACE_RANGE_INVALID");
+    shadowedSeqs.push(...nodes.slice(startIndex, endIndex + 1));
+  } else if (eligible.has(event.type)) {
+    fail("DSH_SURFACE_RANGE_INVALID");
+  }
   const sources = new Set(event.sourceEventSeqs ?? []);
-  if (shadowedSeqs.some((seq) => !sources.has(seq))) fail("DSH_SURFACE_PROVENANCE_INCOMPLETE");
-  validateToolResultRewrite(event, shadowedSeqs, events);
-  nodes.splice(startIndex, endIndex - startIndex + 1, event.seq);
+  // The checkpoint dialect deliberately omits re-injectable non-durable host
+  // snapshot rows (mnemon memory-snapshot user messages) from the provenance
+  // list; every other shadowed surface node must still be named.
+  const isNonDurableSnapshot = (seq) => seq !== event.seq
+    && events[seq]?.type === "user/message"
+    && events[seq]?.data?.source?.kind === "dsh-mnemon"
+    && events[seq]?.data?.source?.form === "memory-snapshot";
+  const provenanceGap = shadowedSeqs.some((seq) => !sources.has(seq)
+    && !(event.data?.source?.kind === "compact-checkpoint" && isNonDurableSnapshot(seq)));
+  if (provenanceGap) fail("DSH_SURFACE_PROVENANCE_INCOMPLETE");
+  if (eligible.has(event.type)) {
+    validateToolResultRewrite(event, shadowedSeqs, events);
+    const endIndex = nodes.indexOf(endSeq);
+    nodes.splice(startIndex, endIndex - startIndex + 1, event.seq);
+  }
 }
 
 function applyInboxSplice(data, queues) {
@@ -1443,13 +1610,33 @@ function applyGoalFold(state, event) {
 
 function compactionReplacementMatches(event, shadow) {
   if (shadow.kind === "prune" && event.type !== "tool/result") return false;
-  if (shadow.kind === "summary" && (event.type !== "user/message"
-    || event.data.source.kind !== "plugin" || event.data.source.plugin !== "compact"
-    || event.data.source.compactionId !== shadow.compactionId
-    || event.data.source.sourceCommandId !== shadow.sourceCommandId)) return false;
+  if (shadow.kind === "summary") {
+    // Legacy form: user/message sourced plugin/compact. Host dialect: the
+    // compact-checkpoint source kind carrying the same compactionId.
+    const source = event.data?.source;
+    const legacy = source?.kind === "plugin" && source.plugin === "compact"
+      && source.compactionId === shadow.compactionId
+      && source.sourceCommandId === shadow.sourceCommandId;
+    const checkpoint = source?.kind === "compact-checkpoint"
+      && source.compactionId === shadow.compactionId;
+    if (event.type !== "user/message" || !(legacy || checkpoint)) return false;
+    if (!["user/message", "assistant/message", "tool/result"].includes(event.type)
+      || !plain(event.surfaceOp) || event.surfaceOp.op !== "replace"
+      || (event.surfaceOp.startSeq ?? event.surfaceOp.start) !== shadow.range.start
+      || (event.surfaceOp.endSeq ?? event.surfaceOp.end) !== shadow.range.end) return false;
+    // Legacy replacements name the shadowed range exactly; checkpoint
+    // replacements additionally carry the open/summary seqs and the replace
+    // boundary, so require set inclusion instead of exact equality.
+    const sources = event.sourceEventSeqs ?? [];
+    if (checkpoint) {
+      return shadow.sourceEventSeqs.every((seq) => sources.includes(seq));
+    }
+    return deepJsonEqual(sources, shadow.sourceEventSeqs);
+  }
   return ["user/message", "assistant/message", "tool/result"].includes(event.type)
     && plain(event.surfaceOp) && event.surfaceOp.op === "replace"
-    && event.surfaceOp.start === shadow.range.start && event.surfaceOp.end === shadow.range.end
+    && (event.surfaceOp.startSeq ?? event.surfaceOp.start) === shadow.range.start
+    && (event.surfaceOp.endSeq ?? event.surfaceOp.end) === shadow.range.end
     && deepJsonEqual(event.sourceEventSeqs, shadow.sourceEventSeqs);
 }
 
@@ -1469,6 +1656,11 @@ function applyCompactionFold(state, event, openTurn, durableSuffixStart) {
     const source = event.data.source;
     if (state.open === null || source.compactionId !== state.open.id
       || source.sourceCommandId !== state.open.sourceCommandId) fail("DSH_EVENT_RELATIONSHIP_INVALID");
+  }
+  if (event.type === "user/message" && event.data.source?.kind === "compact-checkpoint") {
+    if (state.open === null || event.data.source.compactionId !== state.open.id) {
+      fail("DSH_EVENT_RELATIONSHIP_INVALID");
+    }
   }
   if (event.type === "compaction/prune") {
     if (event.data.shadowedSeqs.length === 0
@@ -1706,7 +1898,12 @@ function validateSequence(events, header) {
         const expectedReason = latestRequestHeader === null ? "initial" : "resume";
         if (data.reason !== expectedReason) fail("DSH_EVENT_RELATIONSHIP_INVALID");
       } else {
-        if (data.reason !== "change" || deepJsonEqual(data.header, latestRequestHeader)) {
+        // "series" continues the current request series (header may have changed);
+        // "change" requires a different header; "resume" re-attaches. startsSeries,
+        // when present, marks a fresh series and never a plain continuation.
+        if (!["series", "change", "resume"].includes(data.reason)
+          || (data.reason === "change" && deepJsonEqual(data.header, latestRequestHeader))
+          || (Object.hasOwn(data, "startsSeries") && data.startsSeries === true && data.reason === "series")) {
           fail("DSH_EVENT_RELATIONSHIP_INVALID");
         }
       }
@@ -1775,7 +1972,8 @@ function validateSequence(events, header) {
       const callId = data.message?.source?.callId;
       if (event.surfaceOp === "append") {
         if (typeof callId !== "string" || openTurn !== data.turn || openStep !== data.step) fail("DSH_EVENT_ORDER_INVALID");
-        const syntheticNotStarted = data.message.content[0].isError === true && data.error?.code === "TOOL_NOT_STARTED";
+        const syntheticNotStarted = data.error?.code === "TOOL_NOT_STARTED"
+          && (data.message?.content?.[0]?.isError === true || data.message?.isError === true);
         if (!pendingCalls.delete(callId) && !syntheticNotStarted) fail("DSH_EVENT_ORDER_INVALID");
       } else if (openTurn === null) fail("DSH_EVENT_ORDER_INVALID");
     } else if (event.type === "step/end") {
@@ -2376,23 +2574,23 @@ export class DshSessionAnalyzer extends SessionAnalyzer {
     for (const projectEntry of await directoryEntries(root.path)) {
       const projectPath = path.join(root.path, projectEntry.name);
       if (!isDirectoryEntry(projectEntry)) {
-        if (projectEntry.name.startsWith("session.jsonl")) this.analysisWarnings.push(diagnostic("dsh-flat-artifact-rejected"));
+        if (isDshSessionArtifactName(projectEntry.name)) this.analysisWarnings.push(diagnostic("dsh-flat-artifact-rejected"));
         continue;
       }
       for (const sessionEntry of await directoryEntries(projectPath)) {
         const sessionPath = path.join(projectPath, sessionEntry.name);
         if (!isDirectoryEntry(sessionEntry)) {
-          if (sessionEntry.name.startsWith("session.jsonl")) this.analysisWarnings.push(diagnostic("dsh-flat-artifact-rejected"));
+          if (isDshSessionArtifactName(sessionEntry.name)) this.analysisWarnings.push(diagnostic("dsh-flat-artifact-rejected"));
           continue;
         }
         const entries = await directoryEntries(sessionPath);
         const artifacts = entries.filter((entry) => entry.isFile()
-          && ["session.jsonl", "session.jsonl.zstd"].includes(entry.name));
+          && isDshSessionArtifactName(entry.name));
         const nestedArtifacts = [];
         for (const entry of entries) {
           const childPath = path.join(sessionPath, entry.name);
           if (isDirectoryEntry(entry)) {
-            nestedArtifacts.push(...(await directoryEntries(childPath)).filter((child) => child.name.startsWith("session.jsonl")));
+            nestedArtifacts.push(...(await directoryEntries(childPath)).filter((child) => isDshSessionArtifactName(child.name)));
           }
         }
         if (nestedArtifacts.length > 0) this.analysisWarnings.push(diagnostic("dsh-wrong-depth-rejected"));
@@ -2418,8 +2616,15 @@ export class DshSessionAnalyzer extends SessionAnalyzer {
         if (candidate.projectSegment !== dshProjectKey(artifact.header.cwd)) fail("DSH_PROJECT_KEY_MISMATCH");
         decoded.push({ candidate, artifact });
       } catch (error) {
-        const code = error?.code === "DSH_ZSTD_UNAVAILABLE" ? "dsh-zstd-unavailable" : "dsh-artifact-rejected";
-        this.analysisWarnings.push(diagnostic(code, { reason: error?.code ?? "DSH_READ_FAILED" }));
+        const code = error?.code === "DSH_ZSTD_UNAVAILABLE" ? "dsh-zstd-unavailable"
+          : error?.code === "DSH_UNSUPPORTED_SESSION_FORMAT" ? "dsh-unsupported-session-version"
+          : "dsh-artifact-rejected";
+        this.analysisWarnings.push(diagnostic(code, {
+          reason: error?.code ?? "DSH_READ_FAILED",
+          ...(code === "dsh-unsupported-session-version"
+            ? { observedVersion: error.observedVersion, supportedRange: error.supportedRange }
+            : {}),
+        }));
       }
     }
 

@@ -655,6 +655,24 @@ function buildCursorSourceCoverage({ scope, roots, sessions, inWindowSessions, t
   };
 }
 
+// Declared session-artifact contract for the discovery-gate battery: the
+// artifact filename patterns this adapter actually accepts as session
+// evidence, stated next to the matchers/walkFiles filters that enforce them
+// so a host-side artifact rename cannot drift from the pinned fixtures
+// silently. supportedVersions is null: cursor enforces no host
+// format-version gate on these artifacts.
+export const PLATFORM_SESSION_ARTIFACT_CONTRACT = Object.freeze({
+  platform: "cursor",
+  artifactNames: Object.freeze([
+    /^.+\.jsonl$/u,                            // agent-transcripts: any <sessionId>.jsonl transcript (walkFiles endsWith ".jsonl", maxDepth 2)
+    /^meta\.json$/u,                             // chats/<sessionId>/meta.json chat metadata (exact basename, maxDepth 3)
+    /^context-usage-.+\.canvas\.data\.json$/u,   // projects/<slug>/canvases context-usage snapshot files
+    /^audit\.jsonl$/u,                           // audit/audit.jsonl and audit-logs/audit.jsonl hook records (exact root paths)
+    /^state\.vscdb$/u,                           // composer-state sqlite database (context-usage join)
+  ]),
+  supportedVersions: null,
+});
+
 export class CursorSessionAnalyzer extends SessionAnalyzer {
   currentSessionId() {
     return process.env.CURSOR_SESSION_ID ?? null;

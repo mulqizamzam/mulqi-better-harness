@@ -1,0 +1,3 @@
+{"type":"metadata","protocol_version":1,"time":"2026-11-08T09:00:00Z"}
+{"type":"turn.prompt","time":"2026-11-08T09:00:01Z","input":[{"type":"text","text":"hello kimi"}]}
+{"type":"context.append_message","time":"2026-11-08T09:00:02Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}

@@ -1,0 +1,5 @@
+{"method":"session/update","timestamp":"2026-07-01T10:15:05.000Z","params":{"update":{"sessionUpdate":"user_message_chunk","content":{"text":"Verify the Grok session fixture."}}}}
+{"method":"session/update","timestamp":"2026-07-01T10:15:12.000Z","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"text":"Staged summary.json plus updates.jsonl under the encoded-cwd group."},"_meta":{"modelId":"grok-3-mini"}}}}
+{"method":"session/update","timestamp":"2026-07-01T10:15:18.000Z","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"call_grok_01","toolName":"read","title":"Read README"}}}
+{"method":"session/update","timestamp":"2026-07-01T10:15:22.000Z","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"call_grok_01","toolName":"read","status":"completed","content":{"text":"# mulqi-better-harness"}}}}
+{"method":"session/update","timestamp":"2026-07-01T10:15:40.000Z","params":{"update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"inputTokens":1480,"outputTokens":266}}}}
